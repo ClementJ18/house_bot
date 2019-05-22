@@ -25,27 +25,32 @@ class TheArbitrer(commands.Bot):
         self.admins = [312324424093270017, 241942232867799040]
 
         self.names = []
-        self.fields = [
-            {"name": "name", "check": lambda x: len(x.content) <= 20 and x.lower() not in self.names, "req": "Must be less than or equal to 20 characters and be unique"},
-            {"name": "description", "check": lambda x: len(x.content) <= 500, "req": "Must be less than or equal to 500 characters"},
-            {"name": "initials", "check": lambda x:2 <= len(x.content) <= 5, "req": "Must be between 2 and 5 characters"}
-        ]
+        self.fields = {
+            "name" : {"name": "name", "check": lambda x: len(x) <= 20 and x.lower() not in self.names, "req": "Must be less than or equal to 20 characters and be unique"},
+            "description" : {"name": "description", "check": lambda x: len(x) <= 500, "req": "Must be less than or equal to 500 characters"},
+            "initials" : {"name": "initials", "check": lambda x:2 <= len(x) <= 5, "req": "Must be between 2 and 5 characters"}
+        }
 
     async def disband_house(self, house_id):
-        await self.query_executer("UPDATE Houses SET active='False' WHERE id=$1", house_id)
+        house = await self.query_executer("UPDATE Houses SET active='False' WHERE id=$1 RETURNING role, channel", house_id)
         await self.query_executer("UPDATE Members SET house=1, noble='False' WHERE house=$1", house_id)
         await self.query_executer("UPDATE Alliances SET broken=NOW() WHERE (house1=$1 OR house2=$1) AND BROKEN=NULL", house_id)
         await self.query_executer("UPDATE Lands SET owner=2 WHERE owner=$1", house_id)
 
-    async def log_battle(self, land, attack, victor, *, aid=False):
-        await self.query_executer("INSERT INTO Battles(attacker, defender, victor, land, aid) VALUES($1, $2, $3, $4, $5)",
-            attacker, land["owner"], victor, land["id"], aid)
+        await discord.utils.get(ctx.guild.roles, id=house[0]).delete()
+        await discord.utils.get(ctx.guild.channels, id=house[1]).delete()
+
+    async def log_battle(self, land, attacker, victor, *, aid=False):
+        await self.query_executer(
+            "INSERT INTO Battles(attacker, defender, victor, land, aid) VALUES($1, $2, $3, $4, $5)",
+            attacker, land["owner"], victor, land["id"], aid
+        )
 
         if attacker == victor:
             await self.query_executer("UPDATE Lands SET owner=$1 WHERE id=$2", victor, land["id"])
 
     async def update_names(self):
-        self.names = [x[0].lower() for x in (await self.query_executer("SELECT name FROM Houses"))]
+        self.names = [x[0].lower() for x in await self.query_executer("SELECT name FROM Houses")]
 
     async def query_executer(self, query, *args, fetchval=False):
         conn = await self.pool.acquire()

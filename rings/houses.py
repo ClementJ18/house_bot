@@ -1,8 +1,9 @@
 import discord
 from discord.ext import commands
-from .utils.utils import HouseConverter, reaction_check_factory
+from .utils.utils import HouseConverter, reaction_check_factory, react_menu
 
 import asyncio
+import random
 
 class Houses(commands.Cog):
     def __init__(self, bot):
@@ -21,7 +22,25 @@ class Houses(commands.Cog):
         if reaction.emoji == "\N{NEGATIVE SQUARED CROSS MARK}":
             raise Exception(f"**{user.display_name}** does not agree with the house {field['name']}")
 
-        return content        
+        return content
+
+    @commands.command()
+    async def houses(self, ctx):
+        """Show a list of all houses.
+
+        Usage: `w!houses`
+        """
+        houses = await self.bot.query_executer("SELECT * FROM Houses WHERE id > 2 AND active='True'")
+
+        def embed_generator(page):
+            embed = discord.Embed(title="Houses of the Raccoon Kingdom", description="List of all the houses of the raccoon kingdom")
+
+            for house in houses[page*5:(page+1)*5]:
+                embed.add_field(name=f'{house["name"]} ({house["id"]})', value=house["description"], inline=False)
+
+            return embed
+
+        await react_menu(ctx, len(houses)//5, embed_generator)
 
 
     @commands.command()
@@ -90,14 +109,12 @@ class Houses(commands.Cog):
         values = {}
 
         await self.bot.update_names()
-        for field in self.bot.fields:
-            await ctx.send(f"Now please, {ctx.author.mention}, pick a {field['name']} for the house and all the nobles will have to agree to it. {field['req']}")
-            
+        for field in self.bot.fields.items():            
             def message_check(message):
                 return ctx.author.id == message.author.id and ctx.channel.id == message.channel.id and field['check'](message.content)
 
+            await ctx.send(f"Now please, {ctx.author.mention}, pick a {field['name']} for the house and all the nobles will have to agree to it. {field['req']}")
             message = await self.bot.wait_for("message", check=message_check, timeout=600)
-
             values[field["name"]] = await self.string_validator(ctx, field, nobles, message.content)
 
         role = await ctx.guild.create_role(
@@ -106,7 +123,7 @@ class Houses(commands.Cog):
 
         channel = await ctx.guild.create_text_channel(
             values["name"], 
-            category=discord.utils.get(ctx.guild.channels, name="Family Houses"),
+            category=discord.utils.get(ctx.guild.channels, name="Family Halls"),
             overwrites={
                 role : discord.PermissionOverwrite(read_messages=True),
                 ctx.guild.default_role : discord.PermissionOverwrite(read_messages=False)
@@ -125,6 +142,9 @@ class Houses(commands.Cog):
                 await ctx.send(f":negative_squared_cross_mark: | Couldn't add the role for **{royal.display_name}**")
 
         await ctx.send(f"Alright, the {values['name']} has been created. Long may it endure.")
+
+        land = random.choice(await self.bot.query("SELECT * FROM Lands WHERE owner=2"))
+        await self.bot.log_battle(land, result, result, aid=True)
 
     @commands.command()
     @commands.has_role("Noble Raccoon")
@@ -172,7 +192,7 @@ class Houses(commands.Cog):
         """
         if house is None:
             house_id = await self.bot.query_executer("SELECT house FROM Members WHERE id=$1", ctx.author.id)
-            house = await HouseConverter().convert(house_id[0][0])
+            house = await HouseConverter().convert(ctx, house_id[0][0])
 
         members = await self.bot.query_executer("SELECT * FROM Members WHERE house=$1", house["id"])
         embed = discord.Embed(title=f'{house["name"]} ({house["id"]})', description=house["description"])
@@ -186,8 +206,11 @@ class Houses(commands.Cog):
         lands = await self.bot.query_executer("SELECT * FROM Lands WHERE owner=$1", house["id"])
         embed.add_field(name="Lands", value=len(lands))
 
-        embed.add_field(name="Role", value=discord.utils.get(ctx.guild.roles, id=house["role"]).mention)
-        embed.add_field(name="Channel", value=discord.utils.get(ctx.guild.channels, id=house["channel"]).mention)
+        if house_id > 2:
+            embed.add_field(name="Role", value=discord.utils.get(ctx.guild.roles, id=house["role"]).mention)
+            embed.add_field(name="Channel", value=discord.utils.get(ctx.guild.channels, id=house["channel"]).mention)
+
+        await ctx.send(embed=embed)
 
     @commands.command()
     async def pledge(self, ctx, *, house : HouseConverter):
@@ -283,7 +306,8 @@ class Houses(commands.Cog):
             if not self.bot.fields[field]["check"](value):
                 return await ctx.send(f":negative_squared_cross_mark: | {self.bot.fields[field]['req']}")
 
-            await self.bot.query_executer("UPDATE House SET $1=$2 WHERE id=$3", field, value, house)
+            await self.bot.query_executer(f"UPDATE Houses SET {field}=$1 WHERE id=$2", value, house)
+            await ctx.send(f":white_check_mark: | {field} is now: {value}")
         else:
             await ctx.send(":negative_squared_cross_mark: | Not one of the given options")
 

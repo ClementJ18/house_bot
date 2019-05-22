@@ -55,12 +55,11 @@ class Admin(commands.Cog):
         `w!distribute 3 4` give land with id 3 to house with id 4
         `w!distribute 'Grassland of Emyn Luin' House of Tico` give the land Grassland of Emyn Luin to House of Tico
         """
-        await self.log_battle(land, house["id"], house["id"], aid=True)
-
+        await self.bot.log_battle(land, house["id"], house["id"], aid=True)
         await ctx.send(f":white_check_mark: | By the king's command, {land['name']} is now property of {house['name']}")
 
     @commands.command()
-    async def offer(self, ctx, member : discord.Member, *, house : HouseConverter):
+    async def offer(self, ctx, member : discord.Member, *, house : HouseConverter = None):
         """Offer a member to a house.
 
         Usage: `w!offer [member] [house]`
@@ -69,7 +68,10 @@ class Admin(commands.Cog):
         `w!offer @Necro House of Tico` - make Necro a member of the House of Tico
         `w!offer @Necro House of the Raccoon` - put Necro back in the House of the Raccoon, equivalent to having no house
         """
-        await self.query_executer("UPDATE Member SET house=$1, noble='False' AND WHERE id=$2", house["id"], member.id)
+        if house is None:
+            house = await self.bot.query_executer("SELECT * FROM Houses WHERE id=$1")
+
+        await self.bot.query_executer("UPDATE Member SET house=$1, noble='False' WHERE id=$2", house["id"], member.id)
         await ctx.send(f":white_check_mark: | By the king's command, **{member.display_name}** is now part of {house['name']}")
 
     @commands.command()
@@ -81,7 +83,7 @@ class Admin(commands.Cog):
         __Examples__
         `w!ennoble @Necro` - make Necro a noble of whichever house he currently is in 
         """
-        await self.query_executer("UPDATE Member SET noble='True' AND WHERE id=$1", member.id)
+        await self.bot.query_executer("UPDATE Member SET noble='True' WHERE id=$1", member.id)
         await ctx.send(f":white_check_mark: | By the king's command, **{member.display_name}** is now a noble of their house")
 
     @commands.command()
@@ -93,7 +95,7 @@ class Admin(commands.Cog):
         __Examples__
         `w!disennoble @Necro` - remove Necro as a noble of whichever house he currently is in 
         """
-        await self.query_executer("UPDATE Member SET noble='False' AND WHERE id=$1", member.id)
+        await self.bot.query_executer("UPDATE Member SET noble='False' WHERE id=$1", member.id)
         await ctx.send(f":white_check_mark: | By the king's command, **{member.display_name}** has been stripped of their nobility within their house")
 
     @commands.command()
@@ -115,8 +117,8 @@ class Admin(commands.Cog):
         await self.bot.update_names()
         if field in ["description", "name", "role", "intitials", "channel"]:
             try:
-                if not self.fields[field]["check"](value):
-                    return await ctx.send(f":negative_squared_cross_mark: | {self.fields[field]['req']}")
+                if not self.bot.fields[field]["check"](value):
+                    return await ctx.send(f":negative_squared_cross_mark: | {self.bot.fields[field]['req']}")
             except KeyError:
                 pass
 
