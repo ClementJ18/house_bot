@@ -66,12 +66,12 @@ class Admin(commands.Cog):
 
         __Examples__
         `w!offer @Necro House of Tico` - make Necro a member of the House of Tico
-        `w!offer @Necro House of the Raccoon` - put Necro back in the House of the Raccoon, equivalent to having no house
+        `w!offer @Necro` - put Necro back in the House of the Raccoon, equivalent to having no house
         """
         if house is None:
-            house = await self.bot.query_executer("SELECT * FROM Houses WHERE id=$1")
+            house = (await self.bot.query_executer("SELECT * FROM Houses WHERE id=1"))[0]
 
-        await self.bot.query_executer("UPDATE Member SET house=$1, noble='False' WHERE id=$2", house["id"], member.id)
+        await self.bot.query_executer("UPDATE Members SET house=$1, noble='False' WHERE id=$2", house["id"], member.id)
         await ctx.send(f":white_check_mark: | By the king's command, **{member.display_name}** is now part of {house['name']}")
 
     @commands.command()
@@ -109,7 +109,7 @@ class Admin(commands.Cog):
         Usage: `w!ratify [house] [field] [value]`
 
         __Examples__
-        `w!ratify 'House of Tico' name House of Daiko` - change the name of House of Tico to House of Daiko
+        `w!ratify "House of Tico" name House of Daiko` - change the name of House of Tico to House of Daiko
         `w!ratify 4 channel #house-of-daiko` - change the channel of the house with id 4 to #house-of-daiko. The role
         privilege will have to be overwritten manually, usually you shouldn't need to chang the role or the channel.
         """
@@ -122,7 +122,8 @@ class Admin(commands.Cog):
             except KeyError:
                 pass
 
-            await self.bot.query_executer("UPDATE House SET $1=$2 WHERE id=$3", field, value, house["id"])
+            await self.bot.query_executer(f"UPDATE Houses SET {field}=$1 WHERE id=$2", value, house["id"])
+            await ctx.send(f":white_check_mark: | The {field} of {house['name']} is now {value}")
         else:
             await ctx.send(":negative_squared_cross_mark: | Not one of the given options")
 

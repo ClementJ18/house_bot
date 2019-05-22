@@ -1,5 +1,7 @@
 from discord.ext import commands
 
+import asyncio
+
 def is_admin(ctx):
     return ctx.message.author.id in ctx.bot.admin
 
@@ -59,7 +61,7 @@ class HouseConverter(commands.Converter):
         if house:
             return house[0]
 
-        raise commands.BadArgument("This house does not exist")
+        raise commands.BadArgument(f"House `{argument}` does not exist.")
 
 class LandConverter(commands.Converter):
     async def convert(self, ctx, argument):
@@ -81,7 +83,7 @@ class LandConverter(commands.Converter):
         if land:
             return land[0]
 
-        raise commands.BadArgument("This land does not exist")
+        raise commands.BadArgument(f"Land `{argument}` does not exist")
 
 def reaction_check_factory(msg, nobles):
     approved = []
