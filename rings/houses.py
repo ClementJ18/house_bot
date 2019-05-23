@@ -4,6 +4,7 @@ from .utils.utils import HouseConverter, reaction_check_factory, react_menu
 
 import asyncio
 import random
+import dice
 
 class Houses(commands.Cog):
     def __init__(self, bot):
@@ -56,7 +57,28 @@ class Houses(commands.Cog):
         `w!attack House of Tico` - Attack the House of Tico
         `w!attack 4` - Attack the house with the id 4
         """
-        pass
+        attacker = await self.bot.query_executer("SELECT * FROM Houses WHERE id=(SELECT house FROM Members WHERE id=$1 AND noble='True')"), ctx.author.id
+        if not attacker:
+            return await ctx.send(":negative_squared_cross_mark: | You are not allowed to order an attack")
+
+        attacker = attacker[0]
+        defender = house
+
+        members_atk = [x for x in ctx.guild.members if x.id in await self.bot.query_executer("SELECT * FROM Members WHERE house=$1", attacker["id"])]
+        members_def = [x for x in ctx.guild.members if x.id in await self.bot.query_executer("SELECT * FROM Members WHERE house=$1", defender["id"])]
+
+        battle_advantage = len(members_atk) - len(members_def)
+
+        dice_atk = dice.role("1d100")
+        dice_def = dice.role("1d100")
+
+        battle = (dice_atk + battle_advantage) - dice_def
+
+        if battle > 0:
+            soldier_lost_b = random.choice(list(range(1, battle//2+1)))
+        elif battle < 0:
+            soldier_lost_a = random.choice(list(range(1, abs(battle)//2+1)))
+
 
     @commands.command()
     async def map(self, ctx):

@@ -31,6 +31,15 @@ class TheArbitrer(commands.Bot):
             "initials" : {"name": "initials", "check": lambda x:2 <= len(x) <= 5, "req": "Must be between 2 and 5 characters"}
         }
 
+        self.strengths = {
+            480803366369492992 : 10,
+            497831361969782794 : 8,
+            480804715123179530 : 6,
+            480804634710114305 : 4,
+            480805221904416793 : 2,
+            480806133150253065 : 1
+        }
+
     async def disband_house(self, house_id):
         house = await self.query_executer("UPDATE Houses SET active='False' WHERE id=$1 RETURNING role, channel", house_id)
         await self.query_executer("UPDATE Members SET house=1, noble='False' WHERE house=$1", house_id)
