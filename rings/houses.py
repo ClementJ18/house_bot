@@ -5,6 +5,7 @@ from .utils.utils import HouseConverter, reaction_check_factory, react_menu
 import asyncio
 import random
 import dice
+import datetime
 
 class Houses(commands.Cog):
     def __init__(self, bot):
@@ -25,6 +26,52 @@ class Houses(commands.Cog):
 
         return content
 
+    async def calculate_modifiers(self, attacker, defender):
+        capped = 0
+        uncapped = 0
+        for modifier in await self.bot.query_executer("SELECT attack, capped FROM Modifiers WHERE owner = $1", attacker["id"]):
+            if modifier[1]:
+                capped += modifier[0]
+            else:
+                uncapped += modifier[0]
+
+        modifiers_atk = min(0.50, capped) + uncapped
+
+        capped = 0
+        uncapped = 0
+        for modifier in await self.bot.query_executer("SELECT defense, capped FROM Modifiers WHERE owner = $1", defender["id"]):
+            if modifier[1]:
+                capped += modifier[0]
+            else:
+                uncapped += modifier[0]
+
+        modifiers_def = min(0.50, capped) + uncapped
+
+        if defender["id"] == 2:
+            modifiers_def = 0
+
+        return modifiers_atk, modifiers_def
+
+    async def calculate_strengths(self, ctx, house, attacker, defender):
+        members_atk = [x for x in ctx.guild.members if x.id in [y[0] for y in await self.bot.query_executer("SELECT id FROM Members WHERE house=$1", attacker["id"])]]
+        strength_atk = 0
+        #TODO: reactivate after testing, attacker strength/role check
+        # for member in members_atk:
+        #     strength_atk += self.bot.strengths[discord.utils.find(lambda x: x in self.bot.strengths, [x.id for x in member.roles])]
+        strength_atk = len(members_atk)
+
+        if house["id"] == 2:
+            strength_def = round(strength_atk * 0.66)
+        else:
+            members_def = [x for x in ctx.guild.members if x.id in [y[0] for y in await self.bot.query_executer("SELECT id FROM Members WHERE house=$1", defender["id"])]]
+            strength_def = 0
+            #TODO: reactivate after testing, defender strength/role check
+            # for member in members_def:
+            #     strength_def += self.bot.strengths[discord.utils.find(lambda x: x in self.bot.strengths, [x.id for x in member.roles])]
+            strength_def = len(members_def)
+
+        return strength_atk, strength_def
+
     @commands.command()
     async def houses(self, ctx):
         """Show a list of all houses.
@@ -43,13 +90,63 @@ class Houses(commands.Cog):
 
         await react_menu(ctx, len(houses)//5, embed_generator)
 
+    @commands.command()
+    async def lands(self, ctx, *, house : HouseConverter = None):
+        """Show a list of all lands.
+
+        Usage: `w!lands [house]`
+
+        __Examples__
+        - `w!lands` - show all the lands
+        - `w!lands House of Tico` - show all the lands owned by house of tico
+        """
+        if house:
+            lands = await self.bot.query_executer("SELECT l.id, l.name, l.description, h.name, h.id FROM Lands l, Houses h WHERE l.owner = $1 AND h.id = $1", house["id"])
+        else:
+            lands = await self.bot.query_executer("SELECT l.id, l.name, l.description, h.name, h.id FROM Lands l, Houses h WHERE l.owner = h.id")
+
+        def embed_generator(page):
+            embed = discord.Embed(title="Lands of the Raccoon Kingdom", description="List of all the lands of the raccoon kingdom")
+
+            for land in lands[page*5:(page+1)*5]:
+                embed.add_field(name=f'{land[1]} ({land[0]})', value=f'{land[2]}\n**Owner**: {land[3]}({land[4]})', inline=False)
+
+            return embed
+
+        await react_menu(ctx, len(lands)//5, embed_generator)
+
+    @commands.command()
+    async def artefacts(self, ctx, *, house : HouseConverter = None):
+        """Show a list of all the artefacts.
+
+        Usage: `w!artefacts [house]`
+
+        __Examples__
+        - `w!artefacts` - show all the artefacts
+        - `w!artefacts House of Tico` - show all the artefacts owned by house of tico
+        """
+        if house:
+            modifiers = await self.bot.query_executer("SELECT m.id, m.name, m.description, h.name, h.id FROM Modifiers m, Houses h WHERE m.owner = $1 AND h.id = $1", house["id"])
+        else:
+            modifiers = await self.bot.query_executer("SELECT m.id, m.name, m.description, h.name, h.id FROM Modifiers m, Houses h WHERE m.owner = h.id")
+
+        def embed_generator(page):
+            embed = discord.Embed(title="Artefacts of the Raccoon Kingdom", description="List of all the artefacts of the raccoon kingdom")
+
+            for modifier in modifiers[page*5:(page+1)*5]:
+                embed.add_field(name=f'{modifier[1]} ({modifier[0]})', value=f'{modifier[2]}\n**Owner**: {modifier[3]}({modifier[4]})', inline=False)
+
+            return embed
+
+        await react_menu(ctx, len(modifiers)//5, embed_generator)
+
 
     @commands.command()
     async def attack(self, ctx, *, house : HouseConverter):
         """Attack a house. This is a command heavy of consequences, do not use it lightly, in addition,
-        it has a 14 day cooldown. You cannot attack houses that were created in the last 28 days except if
+        it has a 4 day cooldown. You cannot attack houses that were created in the last 7 days except if
         they have attacked someone themselves. You cannot attack a house you are in an alliance with or were
-        with in the last 14 days. You cannot attack the House of the Raccoon
+        with in the last 4 days. You cannot attack the House of the Raccoon
 
         Usage: `w!attack [house]`
 
@@ -57,28 +154,68 @@ class Houses(commands.Cog):
         `w!attack House of Tico` - Attack the House of Tico
         `w!attack 4` - Attack the house with the id 4
         """
-        attacker = await self.bot.query_executer("SELECT * FROM Houses WHERE id=(SELECT house FROM Members WHERE id=$1 AND noble='True')"), ctx.author.id
+        attacker = await self.bot.query_executer("SELECT * FROM Houses WHERE id=(SELECT house FROM Members WHERE id=$1 AND noble='True')", ctx.author.id)
         if not attacker:
-            return await ctx.send(":negative_squared_cross_mark: | You are not allowed to order an attack")
+            return await ctx.send(":negative_squared_cross_mark: | You are not allowed to order an attack")       
 
         attacker = attacker[0]
         defender = house
 
-        members_atk = [x for x in ctx.guild.members if x.id in await self.bot.query_executer("SELECT * FROM Members WHERE house=$1", attacker["id"])]
-        members_def = [x for x in ctx.guild.members if x.id in await self.bot.query_executer("SELECT * FROM Members WHERE house=$1", defender["id"])]
+        if attacker["id"] == defender["id"]:
+            return await ctx.send(":negative_squared_cross_mark: | You cannot attack yourself.")
 
-        battle_advantage = len(members_atk) - len(members_def)
+        #TODO: reactivate after testing, attack cooldown check
+        # last_attack_atk = await self.bot.query_executer("SELECT created_at FROM Battles WHERE attacker = $1 ORDER BY created_at DESC LIMIT 1", attacker["id"])
+        # if last_attack_atk[0][0].replace(tzinfo=None) + datetime.timedelta(days=4) > datetime.datetime.now():
+        #     return await ctx.send(":negative_squared_cross_mark: | You can only attack once every 4 days")
 
-        dice_atk = dice.role("1d100")
-        dice_def = dice.role("1d100")
+        #TODO: reactivate after testing, grace period check
+        # last_attack_def = await self.bot.query_executer("SELECT * FROM Battles WHERE attacker = $1 AND aid='False'", defender["id"])
+        # if not last_attack_def and defender["created_at"].replace(tzinfo=None) + datetime.timedelta(days=14) > datetime.datetime.now():
+        #     return await ctx.send(":negative_squared_cross_mark: | This house is still in its grace period, you cannot attack it.")
 
-        battle = (dice_atk + battle_advantage) - dice_def
+        alliance = self.bot.query_executer("SELECT * FROM Alliances WHERE (house1 = $1 AND house2 = $2) OR (house1 = $2 AND house2 = $1) AND (broken IS NULL OR broken < NOW() - interval '4 days')", attacker["id"], defender["id"])
+        if alliance:
+            return await ctx.send(":negative_squared_cross_mark: | You cannot attack a house you are or recently were in an alliance with.")
 
-        if battle > 0:
-            soldier_lost_b = random.choice(list(range(1, battle//2+1)))
-        elif battle < 0:
-            soldier_lost_a = random.choice(list(range(1, abs(battle)//2+1)))
 
+        land = random.choice(await self.bot.query_executer("SELECT * FROM Lands WHERE owner=$1", house["id"]))
+        
+        strength_atk, strength_def = await self.calculate_strengths(ctx, house, attacker, defender)
+        modifiers_atk, modifiers_def = await self.calculate_modifiers(attacker, defender)
+        
+        while strength_def > 0 and strength_atk > 0: 
+
+            #battle advantage capped at half of the winning house's strength  
+            raw_battle_advantage = min(strength_atk//2, strength_atk - strength_def) if strength_atk - strength_def > 0 else max(strength_def//2, strength_atk - strength_def)
+            battle_advantage = raw_battle_advantage * (modifiers_atk + 1 - modifiers_def)
+
+            dice_atk = dice.roll("1d100")[0]
+            dice_def = dice.roll("1d100")[0]
+
+            battle = (dice_atk + battle_advantage) - dice_def
+
+            string = random.choice(self.bot.strings)
+            if battle > 0:
+                soldier_lost_b = random.choice(list(range(1, battle//2+1)))
+                strength_def -= soldier_lost_b
+                await ctx.send(string.format(house=defender["name"], soldiers=soldier_lost_b))
+            elif battle < 0:
+                soldier_lost_a = random.choice(list(range(1, abs(battle)//2+1)))
+                strength_atk -= soldier_lost_a
+                await ctx.send(string.format(house=attacker["name"], soldiers=soldier_lost_a))
+            else:
+                await ctx.send("Both houses stare at each other, but neither moves in.")
+
+        if strength_atk > 0:
+            await ctx.send(f":white_check_mark: | {attacker['name']} has won and successfully seized **{land['name']}**")
+            victor = attacker
+
+        if strength_def > 0:
+            await ctx.send(f":white_check_mark: | {defender['name']} has won and successfully defended **{land['name']}**")
+            victor = defender
+
+        await self.bot.log_battle(ctx, land, attacker["id"], victor["id"])
 
     @commands.command()
     async def map(self, ctx):
@@ -108,6 +245,9 @@ class Houses(commands.Cog):
         if len(nobles) != 3:
             return await ctx.send(":negative_squared_cross_mark: | Please select exactly three nobles to be part of the house")
 
+        if any(discord.utils.get(member.roles, name="Noble Raccoon") is None for member in nobles):
+            return await ctx.send(":negative_squared_cross_mark: | All users must have the `Noble Raccoon` role.")
+
         raw_royals = await self.bot.query_executer("SELECT FROM Members WHERE id=ANY($1) AND noble='True'", [x.id for x in nobles])
         royals = [f"**{x.display_name}**" for x in nobles if x.id in raw_royals]
         if royals:
@@ -131,7 +271,7 @@ class Houses(commands.Cog):
         values = {}
 
         await self.bot.update_names()
-        for field in self.bot.fields.items():            
+        for field in self.bot.fields.values():            
             def message_check(message):
                 return ctx.author.id == message.author.id and ctx.channel.id == message.channel.id and field['check'](message.content)
 
@@ -165,8 +305,8 @@ class Houses(commands.Cog):
 
         await ctx.send(f"Alright, the {values['name']} has been created. Long may it endure.")
 
-        land = random.choice(await self.bot.query("SELECT * FROM Lands WHERE owner=2"))
-        await self.bot.log_battle(land, result, result, aid=True)
+        land = random.choice(await self.bot.query_executer("SELECT * FROM Lands WHERE owner=2"))
+        await self.bot.log_battle(ctx, land, result, result, aid=True)
 
     @commands.command()
     @commands.has_role("Noble Raccoon")
@@ -196,7 +336,7 @@ class Houses(commands.Cog):
             await msg.clear_reactions()
 
         if reaction.emoji == "\N{NEGATIVE SQUARED CROSS MARK}":
-            await self.bot.disband_house(house_id)
+            await self.bot.disband_house(ctx, house_id)
             await ctx.send(":white_check_mark: | So be it, you and your people are released from your oaths.")
         elif reaction.emoji == "\N{WHITE HEAVY CHECK MARK}":
             await ctx.send(f":white_check_mark: | **{user.display_name}** has refused to disband the house")
@@ -220,7 +360,7 @@ class Houses(commands.Cog):
         embed = discord.Embed(title=f'{house["name"]} ({house["id"]})', description=house["description"])
         embed.add_field(name="Members", value=len(members))
 
-        nobles = [f"**{discord.utils.get(ctx.guild.members, id=x['id']).display_name}**" for x in members if x["noble"]]
+        nobles = [discord.utils.get(ctx.guild.members, id=x['id']).mention for x in members if x["noble"]]
         embed.add_field(name="Nobles", value=", ".join(nobles))
 
         embed.add_field(name="initials", value=house["initials"])
@@ -228,9 +368,19 @@ class Houses(commands.Cog):
         lands = await self.bot.query_executer("SELECT * FROM Lands WHERE owner=$1", house["id"])
         embed.add_field(name="Lands", value=len(lands))
 
-        if house_id > 2:
+        embed.add_field(name="Creation Date", value=str(house["created_at"]))
+
+        if house["id"] > 2:
             embed.add_field(name="Role", value=discord.utils.get(ctx.guild.roles, id=house["role"]).mention)
             embed.add_field(name="Channel", value=discord.utils.get(ctx.guild.channels, id=house["channel"]).mention)
+
+        if ctx.channel.id == house["channel"]:
+            #extra info 1
+            pass
+
+            if ctx.author.id in [x for x in members if x["noble"]]:
+                #extra info 2
+                pass
 
         await ctx.send(embed=embed)
 
@@ -247,7 +397,7 @@ class Houses(commands.Cog):
         if (await self.bot.query_executer("SELECT house from Members WHERE id=$1", ctx.author.id))[0][0] != 1:
             return await ctx.send(":negative_squared_cross_mark: | You are already part of a house you snake")
 
-        if house["id"] in [1, 2]:
+        if house["id"] < 3:
             await ctx.send(":negative_squared_cross_mark: | You cannot join this house, if you wish to leave your house use `w!renounce`")
 
         def reaction_check(reaction, user):
@@ -333,3 +483,61 @@ class Houses(commands.Cog):
         else:
             await ctx.send(":negative_squared_cross_mark: | Not one of the given options")
 
+    @commands.group()
+    async def alliance(self, ctx):
+        pass
+
+    @alliance.command(name="create")
+    async def alliance_create(self, ctx, *, house : HouseConverter):
+        proposer = (await self.bot.query_executer("SELECT * FROM Houses WHERE id=(SELECT house FROM Members WHERE id=$1)", ctx.author.id))[0]
+        alliance = self.bot.query_executer("SELECT * FROM Alliances WHERE (house1 = $1 AND house2 = $2) OR (house1 = $2 AND house2 = $1) AND broken IS NULL", house["id"], proposer["id"])
+
+        if alliance:
+            return await ctx.send(":negative_squared_cross_mark: | You already have an alliance with this house")
+
+        nobles = [discord.utils.get(ctx.guild.members, id=x).mention for x in await self.bot.query_executer("SELECT * FROM Members WHERE noble = 'True' AND (house=$1 or house=$2)", proposer["id"], house["id"])]
+
+        msg = await ctx.send(f"{', '.join([x.mention for x in nobles])}, do you all agree to ally your houses?")
+
+        await msg.add_reaction("\N{WHITE HEAVY CHECK MARK}")
+        await msg.add_reaction("\N{NEGATIVE SQUARED CROSS MARK}")
+
+        reaction, user = await self.bot.wait_for("reaction_add", check=reaction_check_factory(msg, nobles), timeout=500)
+
+        if reaction.emoji == "\N{NEGATIVE SQUARED CROSS MARK}":
+            return await ctx.send(f":negative_squared_cross_mark: | **{user.display_name}** is opposed to this alliance")
+
+        if reaction.emoji == "\N{NEGATIVE SQUARED CROSS MARK}":
+            await ctx.send(f":white_check_mark: | **{proposer['name']}** and **{house['name']}** are now allied.")
+            await self.bot.query_executer("INSERT INTO Alliances VALUES($1, $2)", house["id"], proposer["id"])
+
+    @alliance.command(name="cancel")
+    async def alliance_cancel(self, ctx, *, house : HouseConverter):
+        proposer = (await self.bot.query_executer("SELECT * FROM Houses WHERE id=(SELECT house FROM Members WHERE id=$1)", ctx.author.id))[0]
+        alliance = self.bot.query_executer("SELECT * FROM Alliances WHERE (house1 = $1 AND house2 = $2) OR (house1 = $2 AND house2 = $1 AND broken IS NULL)", house["id"], proposer["id"])
+
+        if not alliance:
+            return await ctx.send(":negative_squared_cross_mark: | You don't have any alliances with this house")
+
+        nobles = [discord.utils.get(ctx.guild.members, id=x).mention for x in await self.bot.query_executer("SELECT * FROM Members WHERE noble = 'True' AND house=$1", proposer["id"])]
+
+        msg = await ctx.send(f"{', '.join([x.mention for x in nobles])}, do you all agree to break this alliance?")
+
+        await msg.add_reaction("\N{WHITE HEAVY CHECK MARK}")
+        await msg.add_reaction("\N{NEGATIVE SQUARED CROSS MARK}")
+
+        reaction, user = await self.bot.wait_for("reaction_add", check=reaction_check_factory(msg, nobles), timeout=500)
+
+        if reaction.emoji == "\N{NEGATIVE SQUARED CROSS MARK}":
+            return await ctx.send(f":negative_squared_cross_mark: | **{user.display_name}** is opposed to breaking this alliance")
+
+        if reaction.emoji == "\N{NEGATIVE SQUARED CROSS MARK}":
+            await ctx.send(f":white_check_mark: | The alliance between **{proposer['name']}** and **{house['name']}** is now broken.")
+            await self.bot.query_executer("UPDATE Alliances SET broken=NOW() WHERE broken IS NULL AND ((house1=$1 AND house2=$2) OR (house1=$2 AND house2=$1))", house["id"], proposer["id"])
+
+    # @commands.group()
+    # async def exchange(self, ctx):
+    #     pass
+
+    # @exchange.command(name="artefact")
+    # async def exchange_weapon()

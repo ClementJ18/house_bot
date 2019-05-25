@@ -49,7 +49,14 @@ CREATE TABLE Modifiers (
     id SERIAL PRIMARY KEY,
     name VARCHAR(20),
     description VARCHAR(500),
-    attack INT NOT NULL DEFAULT 1,
-    defense INT NOT NULL DEFAULT 1,
+    attack DECIMAL(4) NOT NULL DEFAULT 1.00,
+    defense DECIMAL(4) NOT NULL DEFAULT 1.00,
     owner BIGINT REFERENCES House(id) NOT NULL DEFAULT 1 ON DELETE CASCADE
+    capped BOOLEAN NOT NULL DEFAULT 'True'
+);
+
+CREATE TABLE Prisonners (
+    id BIGINT PRIMARY KEY REFERENCES Members(id),
+    captor BIGINT REFERENCES Houses(id),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

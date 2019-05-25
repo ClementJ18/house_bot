@@ -5,6 +5,7 @@ from .utils.utils import HouseConverter, LandConverter
 
 import ast
 import psutil
+import typing
 
 class Admin(commands.Cog):
     def __init__(self, bot):
@@ -41,8 +42,8 @@ class Admin(commands.Cog):
         `w!terminate House of Tico` - terminate house named House of Tico
         `w!terminate 4` - terminate house with id 4
         """
-        await self.bot.disband_house(house["id"])
-        await ctx.send(f":white_check_mark: | House {house['name']} has been terminated and now the rains weep o’er their hall")
+        await self.bot.disband_house(ctx, house["id"])
+        await ctx.send(f":white_check_mark: | **{house['name']}** has been terminated and now the rains weep o’er their hall")
 
     @commands.command()
     async def distribute(self, ctx, land : LandConverter, *, house : HouseConverter):
@@ -55,8 +56,8 @@ class Admin(commands.Cog):
         `w!distribute 3 4` give land with id 3 to house with id 4
         `w!distribute 'Grassland of Emyn Luin' House of Tico` give the land Grassland of Emyn Luin to House of Tico
         """
-        await self.bot.log_battle(land, house["id"], house["id"], aid=True)
-        await ctx.send(f":white_check_mark: | By the king's command, {land['name']} is now property of {house['name']}")
+        await self.bot.log_battle(ctx, land, house["id"], house["id"], aid=True)
+        await ctx.send(f":white_check_mark: | By the king's command, **{land['name']}** is now property of **{house['name']}**")
 
     @commands.command()
     async def offer(self, ctx, member : discord.Member, *, house : HouseConverter = None):
@@ -71,8 +72,17 @@ class Admin(commands.Cog):
         if house is None:
             house = (await self.bot.query_executer("SELECT * FROM Houses WHERE id=1"))[0]
 
+        role = (await self.bot.query_executer("SELECT role FROM Houses WHERE id=(SELECT house FROM Members WHERE id=$1)", member.id))[0][0]
         await self.bot.query_executer("UPDATE Members SET house=$1, noble='False' WHERE id=$2", house["id"], member.id)
-        await ctx.send(f":white_check_mark: | By the king's command, **{member.display_name}** is now part of {house['name']}")
+        await ctx.send(f":white_check_mark: | By the king's command, **{member.display_name}** is now part of **{house['name']}**")
+
+        role = discord.utils.get(ctx.guild.roles, id=role)
+        if role:
+            await member.remove_roles(role)
+
+        role = discord.utils.get(ctx.guild.roles, id=house["role"])
+        if role:
+            await member.add_roles(role)
 
     @commands.command()
     async def ennoble(self, ctx, member : discord.Member):
@@ -83,7 +93,7 @@ class Admin(commands.Cog):
         __Examples__
         `w!ennoble @Necro` - make Necro a noble of whichever house he currently is in 
         """
-        await self.bot.query_executer("UPDATE Member SET noble='True' WHERE id=$1", member.id)
+        await self.bot.query_executer("UPDATE Members SET noble='True' WHERE id=$1", member.id)
         await ctx.send(f":white_check_mark: | By the king's command, **{member.display_name}** is now a noble of their house")
 
     @commands.command()
@@ -95,11 +105,11 @@ class Admin(commands.Cog):
         __Examples__
         `w!disennoble @Necro` - remove Necro as a noble of whichever house he currently is in 
         """
-        await self.bot.query_executer("UPDATE Member SET noble='False' WHERE id=$1", member.id)
+        await self.bot.query_executer("UPDATE Members SET noble='False' WHERE id=$1", member.id)
         await ctx.send(f":white_check_mark: | By the king's command, **{member.display_name}** has been stripped of their nobility within their house")
 
     @commands.command()
-    async def ratify(self, ctx, house : HouseConverter, field, *, value):
+    async def ratify(self, ctx, house : HouseConverter, field, *, value: typing.Union[discord.Role, discord.TextChannel, str]):
         """Edit any details of a house, rewriting history as you please. `field` has the following possible values
         - name
         - description
@@ -122,8 +132,20 @@ class Admin(commands.Cog):
             except KeyError:
                 pass
 
+            if field in ["role", "channel"]:
+                name = value.mention
+                value = value.id
+            else:
+                name = value
+
             await self.bot.query_executer(f"UPDATE Houses SET {field}=$1 WHERE id=$2", value, house["id"])
-            await ctx.send(f":white_check_mark: | The {field} of {house['name']} is now {value}")
+            await ctx.send(f":white_check_mark: | The {field} of **{house['name']}** is now **{name}**")
+
+            if field == 'role':
+                members = [discord.utils.get(ctx.guild.members, id=x[0]) for x in await self.bot.query_executer("SELECT id FROM Members WHERE house=$1", house["id"])]
+                for member in members:
+                    await member.remove_roles(discord.utils.get(ctx.guild.roles, id=house["role"]))
+                    await member.add_roles(discord.utils.get(ctx.guild.roles, id=value))
         else:
             await ctx.send(":negative_squared_cross_mark: | Not one of the given options")
 

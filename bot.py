@@ -10,6 +10,7 @@ import asyncpg
 from datetime import timedelta
 import asyncio
 import sys
+import json
 
 class TheArbitrer(commands.Bot):
     def __init__(self):
@@ -21,9 +22,6 @@ class TheArbitrer(commands.Bot):
             max_messages=25000
         )
 
-        self.error_channel = 415169176693506048
-        self.admins = [312324424093270017, 241942232867799040]
-
         self.names = []
         self.fields = {
             "name" : {"name": "name", "check": lambda x: len(x) <= 20 and x.lower() not in self.names, "req": "Must be less than or equal to 20 characters and be unique"},
@@ -31,25 +29,24 @@ class TheArbitrer(commands.Bot):
             "initials" : {"name": "initials", "check": lambda x:2 <= len(x) <= 5, "req": "Must be between 2 and 5 characters"}
         }
 
-        self.strengths = {
-            480803366369492992 : 10,
-            497831361969782794 : 8,
-            480804715123179530 : 6,
-            480804634710114305 : 4,
-            480805221904416793 : 2,
-            480806133150253065 : 1
-        }
+        with open("config.json", "r") as f:
+            config = json.load(f)
+            self.error_channel = config["error_channel"]
+            self.admins = config["admins"]
+            self.permissions = config["permissions"]
+            self.strengths = {int(key) : value for key, value in config["strengths"].items()}
+            self.strings = config["strings"]
 
-    async def disband_house(self, house_id):
+    async def disband_house(self, ctx, house_id):
         house = await self.query_executer("UPDATE Houses SET active='False' WHERE id=$1 RETURNING role, channel", house_id)
         await self.query_executer("UPDATE Members SET house=1, noble='False' WHERE house=$1", house_id)
         await self.query_executer("UPDATE Alliances SET broken=NOW() WHERE (house1=$1 OR house2=$1) AND BROKEN=NULL", house_id)
         await self.query_executer("UPDATE Lands SET owner=2 WHERE owner=$1", house_id)
 
-        await discord.utils.get(ctx.guild.roles, id=house[0]).delete()
-        await discord.utils.get(ctx.guild.channels, id=house[1]).delete()
+        await discord.utils.get(ctx.guild.roles, id=house[0][0]).delete()
+        await discord.utils.get(ctx.guild.channels, id=house[0][1]).delete()
 
-    async def log_battle(self, land, attacker, victor, *, aid=False):
+    async def log_battle(self, ctx, land, attacker, victor, *, aid=False):
         await self.query_executer(
             "INSERT INTO Battles(attacker, defender, victor, land, aid) VALUES($1, $2, $3, $4, $5)",
             attacker, land["owner"], victor, land["id"], aid
@@ -57,6 +54,11 @@ class TheArbitrer(commands.Bot):
 
         if attacker == victor:
             await self.query_executer("UPDATE Lands SET owner=$1 WHERE id=$2", victor, land["id"])
+
+            if not await self.query_executer("SELECT * FROM Lands WHERE owner=$1", land["owner"]):
+                await self.disband_house(ctx, land["owner"])
+                defender = (await self.query_executer("SELECT name FROM Houses WHERE id=$1", land["owner"]))[0][0]
+                await ctx.send(f"**{defender}** has been wiped from existence, all that is left is the echoing laughter of thirsting gods.")
 
     async def update_names(self):
         self.names = [x[0].lower() for x in await self.query_executer("SELECT name FROM Houses")]
@@ -105,16 +107,13 @@ class TheArbitrer(commands.Bot):
         await self.query_executer("INSERT INTO Members(id) VALUES($1)", member.id)
 
     async def on_member_leave(self, member):
-        results = await self.query_executer("DELETE FROM Members WHERE id=$1 RETURNING house, noble", member.id, fetchval=True)
-        if results[0][1]:
-            pass
-            #do something?
+        await self.query_executer("DELETE FROM Members WHERE id=$1", member.id)
 
     async def on_command_error(self, ctx, error):
         """Catches error and sends a message to the user that caused the error with a helpful message."""
         channel = ctx.channel
         if isinstance(error, commands.MissingRequiredArgument):
-            await channel.send(f":negative_squared_cross_mark: | Missing required argument: `{error.param.name}`! Check help guide with `n!help {ctx.command.qualified_name}`", delete_after=10)
+            await channel.send(f":negative_squared_cross_mark: | Missing required argument: `{error.param.name}`! Check help guide with `w!help {ctx.command.qualified_name}`", delete_after=10)
             #this can be used to print *all* the missing arguments (bit hacky tho)
             # index = list(ctx.command.clean_params.keys()).index(error.param.name)
             # missing = list(ctx.command.clean_params.values())[index:]

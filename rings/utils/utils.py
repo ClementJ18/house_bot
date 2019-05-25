@@ -63,6 +63,28 @@ class HouseConverter(commands.Converter):
 
         raise commands.BadArgument(f"House `{argument}` does not exist.")
 
+class ModifierConverter(commands.Converter):
+    async def convert(self, ctx, argument):
+        try:
+            modifier_id = int(argument)
+            modifier = await ctx.bot.query_executer("SELECT * FROM Modifiers WHERE id=$1", modifier_id)
+            if modifier:
+                return modifier[0]
+        except ValueError:
+            pass
+
+        modifier = await ctx.bot.query_executer("SELECT * FROM Modifiers WHERE name=$1", argument)
+
+        if modifier:
+            return modifier[0]
+
+        modifier = await ctx.bot.query_executer("SELECT * FROM Modifiers WHERE name LIKE $1", argument)
+
+        if modifier:
+            return modifier[0]
+
+        raise commands.BadArgument(f"Artefact `{argument}` does not exist.")
+
 class LandConverter(commands.Converter):
     async def convert(self, ctx, argument):
         try:
