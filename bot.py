@@ -4,6 +4,7 @@ from discord.ext import commands
 from rings.admin import Admin
 from rings.houses import Houses
 from config import token, dbpass
+from rings.utils import get_house_from_member
 
 import traceback
 import asyncpg
@@ -11,6 +12,7 @@ from datetime import timedelta
 import asyncio
 import sys
 import json
+import random
 
 class TheArbitrer(commands.Bot):
     def __init__(self):
@@ -35,33 +37,59 @@ class TheArbitrer(commands.Bot):
             self.admins = config["admins"]
             self.permissions = config["permissions"]
             self.strengths = {int(key) : value for key, value in config["strengths"].items()}
-            self.strings = config["strings"]
+            self.soldier_strings = config["soldier_strings"]
+            self.prisoner_strings = config["prisoner_strings"]
 
     async def disband_house(self, ctx, house_id):
-        house = await self.query_executer("UPDATE Houses SET active='False' WHERE id=$1 RETURNING role, channel", house_id)
-        await self.query_executer("UPDATE Members SET house=1, noble='False' WHERE house=$1", house_id)
-        await self.query_executer("UPDATE Alliances SET broken=NOW() WHERE (house1=$1 OR house2=$1) AND BROKEN=NULL", house_id)
-        await self.query_executer("UPDATE Lands SET owner=2 WHERE owner=$1", house_id)
+        house = await self.query_executer("UPDATE houses.Houses SET active='False' WHERE id=$1 RETURNING role, channel", house_id)
+        await self.query_executer("UPDATE houses.Members SET house=1, noble='False' WHERE house=$1", house_id)
+        await self.query_executer("UPDATE houses.Alliances SET broken=NOW() WHERE (house1=$1 OR house2=$1) AND BROKEN=NULL", house_id)
+        await self.query_executer("UPDATE houses.Lands SET owner=2 WHERE owner=$1", house_id)
 
         await discord.utils.get(ctx.guild.roles, id=house[0][0]).delete()
         await discord.utils.get(ctx.guild.channels, id=house[0][1]).delete()
 
+    async def take_prisoner(self, ctx, user, captor):
+        user_house = await get_house_from_member(user.id)
+
+        check = await self.query_executer("SELECT * FROM houses.Members WHERE house=$1 AND noble='True' AND NOT EXISTS (SELECT * FROM houses.Prisoners)", user_house["id"])
+        if len(check) > 1:
+            return await ctx.send(f"{user.mention} was captured, but as the last lord of his house, honor dictate he be released.")
+
+        channel = discord.utils.get(ctx.guild.channels, id=user_house["channel"])
+        await channel.set_permissions(user, overwrite=discord.PermissionOverwrite(read_messages=False))
+        await self.query_executer("INSERT INTO houses.Prisoners VALUES ($1, $2)", user.id, captor)
+
+        captor_house = (await self.query_executer("SELECT * FROM houses.Houses WHERE id=$1"), captor)
+        await ctx.send(random.choice(self.prisoner_strings).format(house=captor_house["name"], member=user.mention))
+
+    async def release_prisoner(self, ctx, user):
+        captor = await self.query_executer("DELETE FROM houses.Prisoners WHERE id=$1 RETURNING captor", user.id, fetchval=True)
+
+        await ctx.send(f"{user.mention} has been freed.")
+        user_house = await get_house_from_member(user.id)
+
+        await discord.utils.get(ctx.guild.channels,id=user_house["channel"]).set_permissions(user, overwrite=None)
+        await ctx.send("")
+
+
     async def log_battle(self, ctx, land, attacker, victor, *, aid=False):
         await self.query_executer(
-            "INSERT INTO Battles(attacker, defender, victor, land, aid) VALUES($1, $2, $3, $4, $5)",
+            "INSERT INTO houses.Battles(attacker, defender, victor, land, aid) VALUES($1, $2, $3, $4, $5)",
             attacker, land["owner"], victor, land["id"], aid
         )
 
         if attacker == victor:
-            await self.query_executer("UPDATE Lands SET owner=$1 WHERE id=$2", victor, land["id"])
+            await self.query_executer("UPDATE houses.Lands SET owner=$1 WHERE id=$2", victor, land["id"])
 
-            if not await self.query_executer("SELECT * FROM Lands WHERE owner=$1", land["owner"]):
+            if not await self.query_executer("SELECT * FROM houses.Lands WHERE owner=$1", land["owner"]):
                 await self.disband_house(ctx, land["owner"])
-                defender = (await self.query_executer("SELECT name FROM Houses WHERE id=$1", land["owner"]))[0][0]
+                defender = (await self.query_executer("SELECT name FROM houses.Houses WHERE id=$1", land["owner"]))[0][0]
+                await self.query_executer("UPDATE houses.Artefacts SET owner=$1 WHERE owner=$2 AND name=$3", victor, defender["id"], f'Banner of {defender["name"]}')
                 await ctx.send(f"**{defender}** has been wiped from existence, all that is left is the echoing laughter of thirsting gods.")
 
     async def update_names(self):
-        self.names = [x[0].lower() for x in await self.query_executer("SELECT name FROM Houses")]
+        self.names = [x[0].lower() for x in await self.query_executer("SELECT name FROM houses.Houses")]
 
     async def query_executer(self, query, *args, fetchval=False):
         conn = await self.pool.acquire()
@@ -91,23 +119,26 @@ class TheArbitrer(commands.Bot):
     async def on_ready(self):
         self.pool = await asyncpg.create_pool(database="postgres", user="postgres", password=dbpass)
 
-        ids = [x[0] for x in await self.query_executer("SELECT id from Members")]
+        ids = [x[0] for x in await self.query_executer("SELECT id FROM houses.Members")]
         to_add = [x.id for x in self.get_all_members() if x.id not in ids]
         for user in to_add:
             if user == 312324424093270017:
-                await self.query_executer("INSERT INTO Members(id, noble) VALUES($1, 'True')", user)
+                await self.query_executer("INSERT INTO houses.Members(id, noble) VALUES($1, 'True')", user)
             else:
-                await self.query_executer("INSERT INTO Members(id) VALUES($1)", user)
+                await self.query_executer("INSERT INTO houses.Members(id) VALUES($1)", user)
 
         await self.update_names()
 
+        self.news = discord.utils.get(self.get_all_channels(), name="News of the War")
+        self.halls = discord.utils.get(self.get_all_channels(), name="House Halls")
+        self.reports = discord.utils.get(self.get_all_channels(), name="War Report")
         print("We're up")
 
     async def on_member_join(self, member):
-        await self.query_executer("INSERT INTO Members(id) VALUES($1)", member.id)
+        await self.query_executer("INSERT INTO houses.Members(id) VALUES($1)", member.id)
 
     async def on_member_leave(self, member):
-        await self.query_executer("DELETE FROM Members WHERE id=$1", member.id)
+        await self.query_executer("DELETE FROM houses.Members WHERE id=$1", member.id)
 
     async def on_command_error(self, ctx, error):
         """Catches error and sends a message to the user that caused the error with a helpful message."""

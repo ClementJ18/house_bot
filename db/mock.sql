@@ -1,6 +1,5 @@
-INSERT INTO houses.Lands(name, description)
-VALUES  ('Raccoon Castle', 'The castle of Sebubu, in impregnable fortress defended by huge 6 feet tall raccoons.'),
-        ('Land A', 'A rich and fertile land'),
+INSERT INTO Lands(name, description)
+VALUES  ('Land A', 'A rich and fertile land'),
         ('Land B', 'A rich and fertile land'),
         ('Land C', 'A rich and fertile land'),
         ('Land D', 'A rich and fertile land'),
@@ -35,15 +34,11 @@ VALUES  ('Raccoon Castle', 'The castle of Sebubu, in impregnable fortress defend
         ('Land 6', 'A rich and fertile land'),
         ('Land 7', 'A rich and fertile land'),
         ('Land 8', 'A rich and fertile land'),
-        ('Land 9', 'A rich and fertile land');
+        ('Land 9', 'A rich and fertile land'),
+        ('Racoon Castle', 'The castle of Sebubu, in impregnable fortress defended by huge 6 feet tall raccoons.');
 
-INSERT INTO houses.Artefacts(name, description, attack, defense, prisoner, capped)
-VALUES  ('Crowns of Raccoons', 'A crown passed down by the ancient raccoon gods to the King.', 999, 999, 0, 'False'),
-        ('Grond', 'A great warhammer', 0.05, 0, 0, 'True'),
-        ('Ancient Blade', 'The ancient blade of Ner'' Zul, has a strong defensive aura', 0, 0.02, 0, 'True'),
-        ('Shield of the Gods', 'A golden shield blessed by the gods', 0, 0.07, 0, 'True'),
-        ('Fluffy Handcuffs', 'Fluffy handcuffs used to take prisoners', 0, 0, 0.05, 'True');
-
-INSERT INTO houses.Landmarks(name, description, attack, defense, capped, location)
-VALUES  ('Raccoon Throne', 'A great stone throne which sits in the castle.', 999, 999, 'True', 1),
-        ('The Mute Stone', 'A simple stone which is rumored to hold the spirit of a mute man, forbidden from talking by the gods', 0, 0.05, 'True', 2);
+INSERT INTO Modifiers(name, description, attack, defense, capped)
+VALUES ('Crowns of Raccoons', 'A crown passed down by the ancient racoon gods to the King.', 999, 999, 'False'),
+       ('Grond, Hammer of the Underworld', 'A great warhammer', 0.05, 0, 'True'),
+       ('Ancient Blade', 'The ancient blade of Ner\' Zul, has a strong defensive aura', 0, 0.02, 'True'),
+       ('Shield of the Gods', 'A golden shield blessed by the gods', 0, 0.07);

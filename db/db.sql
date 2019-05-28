@@ -1,4 +1,4 @@
-CREATE TABLE houses.Houses (
+CREATE TABLE Houses (
     id SERIAL PRIMARY KEY,
     name VARCHAR(20),
     initials VARCHAR(5),
@@ -6,39 +6,39 @@ CREATE TABLE houses.Houses (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     role BIGINT,
     description VARCHAR(500),
-    channel BIGINT
+    channel BIGINT,
 );
 
-INSERT INTO houses.Houses(name, initials, role, description, channel) 
+INSERT INTO Houses(name, initials, role, description, channel) 
 VALUES ('House of the Racoon', 'HotR', 0, 'The noble house of our King Sebubu', 0),
        ('Bandits', 'B', 0, 'The house of the thieves that have stolen our land', 0);
 
-CREATE TABLE houses.Lands (
+CREATE TABLE Lands (
     id SERIAL PRIMARY KEY,
     name VARCHAR(20),
-    owner BIGINT REFERENCES houses.Houses(id) ON DELETE CASCADE NOT NULL DEFAULT 2,
+    owner BIGINT NOT NULL DEFAULT 2 REFERENCES Houses(id) ON DELETE CASCADE,
     description VARCHAR(500)
 );
 
-CREATE TABLE houses.Members (
+CREATE TABLE Members (
     id BIGINT PRIMARY KEY,
-    house BIGINT REFERENCES houses.Houses(id) ON DELETE CASCADE NOT NULL DEFAULT 1,
+    house BIGINT REFERENCES Houses(id) NOT NULL DEFAULT 1 ON DELETE CASCADE,
     noble BOOLEAN NOT NULL DEFAULT 'False'
 );
 
-CREATE TABLE houses.Battles (
+CREATE TABLE Battles (
     id SERIAL PRIMARY KEY,
-    attacker BIGINT REFERENCES houses.Houses(id) ON DELETE CASCADE,
-    defender BIGINT REFERENCES houses.Houses(id) ON DELETE CASCADE,
-    victor BIGINT REFERENCES houses.Houses(id) ON DELETE CASCADE,
+    attacker BIGINT REFERENCES Houses(id) ON DELETE CASCADE,
+    defender BIGINT REFERENCES Houses(id) ON DELETE CASCADE,
+    victor BIGINT REFERENCES Houses(id) ON DELETE CASCADE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    land BIGINT REFERENCES houses.Lands(id) ON DELETE CASCADE,
+    land BIGINT REFERENCES Lands(id) ON DELETE CASCADE,
     aid BOOLEAN NOT NULL DEFAULT 'False'
 );
 
-CREATE TABLE houses.Alliances (
-    house1 BIGINT REFERENCES houses.Houses(id) ON DELETE CASCADE,
-    house2 BIGINT REFERENCES houses.Houses(id) ON DELETE CASCADE,
+CREATE TABLE Alliances (
+    house1 BIGINT REFERENCES Houses(id) ON DELETE CASCADE,
+    house2 BIGINT REFERENCES Houses(id) ON DELETE CASCADE,
     PRIMARY KEY (house1, house2),
 
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -48,33 +48,32 @@ CREATE TABLE houses.Alliances (
 CREATE TYPE rarityCategory AS ENUM ('common', 'uncommon', 'rare', 'epic', 'legendary', 'mythic');
 CREATE TYPE conditionStatus AS ENUM ('gift', 'scouting', 'looting');
 
-CREATE TABLE houses.Artefacts (
+CREATE TABLE Artefacts (
     id SERIAL PRIMARY KEY,
     name VARCHAR(20),
     description VARCHAR(500),
     attack DECIMAL(4) NOT NULL DEFAULT 0,
     defense DECIMAL(4) NOT NULL DEFAULT 0,
-    prisoner DECIMAL(4) NOT NULL DEFAULT 0,
-    owner BIGINT REFERENCES houses.Houses(id) ON DELETE CASCADE NOT NULL DEFAULT 1,
+    prisonner DECIMAL(4) NOT NULL DEFAULT 0,
+    owner BIGINT REFERENCES Houses(id) NOT NULL DEFAULT 1 ON DELETE CASCADE
     capped BOOLEAN NOT NULL DEFAULT 'True',
     rarity rarityCategory,
     condition conditionStatus,
     hidden BOOLEAN NOT NULL DEFAULT 'True'
 );
 
-CREATE TABLE houses.Landmarks (
+CREATE TABLE Landmarks (
     id SERIAL PRIMARY KEY,
     name VARCHAR(20),
     description VARCHAR(500),
     attack DECIMAL(4) NOT NULL DEFAULT 0,
     defense DECIMAL(4) NOT NULL DEFAULT 0,
-    location BIGINT REFERENCES houses.Lands(id) ON DELETE CASCADE NOT NULL DEFAULT 1,
-    capped BOOLEAN NOT NULL DEFAULT 'True',
-    hidden BOOLEAN NOT NULL DEFAULT 'True'
+    location BIGINT REFERENCES Lands(id) NOT NULL DEFAULT 1 ON DELETE CASCADE
+    capped BOOLEAN NOT NULL DEFAULT 'True'
 );
 
-CREATE TABLE houses.Prisoners (
-    id BIGINT PRIMARY KEY REFERENCES houses.Members(id) ON DELETE CASCADE,
-    captor BIGINT REFERENCES houses.Houses(id),
+CREATE TABLE Prisonners (
+    id BIGINT PRIMARY KEY REFERENCES Members(id),
+    captor BIGINT REFERENCES Houses(id),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

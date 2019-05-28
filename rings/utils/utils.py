@@ -1,6 +1,7 @@
 from discord.ext import commands
 
 import asyncio
+import enum
 
 def is_admin(ctx):
     return ctx.message.author.id in ctx.bot.admin
@@ -45,18 +46,18 @@ class HouseConverter(commands.Converter):
     async def convert(self, ctx, argument):
         try:
             house_id = int(argument)
-            house = await ctx.bot.query_executer("SELECT * FROM Houses WHERE id=$1 AND active='True'", house_id)
+            house = await ctx.bot.query_executer("SELECT * FROM houses.Houses WHERE id=$1 AND active='True'", house_id)
             if house:
                 return house[0]
         except ValueError:
             pass
 
-        house = await ctx.bot.query_executer("SELECT * FROM Houses WHERE name=$1 AND active='True'", argument)
+        house = await ctx.bot.query_executer("SELECT * FROM houses.Houses WHERE name=$1 AND active='True'", argument)
 
         if house:
             return house[0]
 
-        house = await ctx.bot.query_executer("SELECT * FROM Houses WHERE name LIKE $1 AND active='True'", argument)
+        house = await ctx.bot.query_executer("SELECT * FROM houses.Houses WHERE name LIKE $1 AND active='True'", argument)
 
         if house:
             return house[0]
@@ -67,18 +68,18 @@ class ModifierConverter(commands.Converter):
     async def convert(self, ctx, argument):
         try:
             modifier_id = int(argument)
-            modifier = await ctx.bot.query_executer("SELECT * FROM Modifiers WHERE id=$1", modifier_id)
+            modifier = await ctx.bot.query_executer("SELECT * FROM houses.Modifiers WHERE id=$1", modifier_id)
             if modifier:
                 return modifier[0]
         except ValueError:
             pass
 
-        modifier = await ctx.bot.query_executer("SELECT * FROM Modifiers WHERE name=$1", argument)
+        modifier = await ctx.bot.query_executer("SELECT * FROM houses.Modifiers WHERE name=$1", argument)
 
         if modifier:
             return modifier[0]
 
-        modifier = await ctx.bot.query_executer("SELECT * FROM Modifiers WHERE name LIKE $1", argument)
+        modifier = await ctx.bot.query_executer("SELECT * FROM houses.Modifiers WHERE name LIKE $1", argument)
 
         if modifier:
             return modifier[0]
@@ -89,18 +90,18 @@ class LandConverter(commands.Converter):
     async def convert(self, ctx, argument):
         try:
             land_id = int(argument)
-            land = await ctx.bot.query_executer("SELECT * FROM Lands WHERE id=$1", land_id)
+            land = await ctx.bot.query_executer("SELECT * FROM houses.Lands WHERE id=$1", land_id)
             if land:
                 return land[0]
         except ValueError:
             pass
 
-        land = await ctx.bot.query_executer("SELECT * FROM Lands WHERE name=$1", argument)
+        land = await ctx.bot.query_executer("SELECT * FROM houses.Lands WHERE name=$1", argument)
 
         if land:
             return land[0]
 
-        land = await ctx.bot.query_executer("SELECT * FROM Lands WHERE name LIKE $1", argument)
+        land = await ctx.bot.query_executer("SELECT * FROM houses.Lands WHERE name LIKE $1", argument)
 
         if land:
             return land[0]
@@ -125,3 +126,28 @@ def reaction_check_factory(msg, nobles):
         return False
 
     return reaction_check
+
+class RarityCategory(enum.Enum):
+    common = enum.auto()
+    uncommon = enum.auto()
+    rare = enum.auto()
+    epic = enum.auto()
+    legendary = enum.auto()
+
+class ConditionStatus(enum.Enum):
+    gift = enum.auto()
+    scouting = enum.auto()
+    looting = enum.auto()
+
+async def get_house_from_member(id, *, noble=None):
+    if noble is None:
+        sql = "SELECT * FROM houses.Houses WHERE id=(SELECT house FROM houses.Members WHERE id=$1)"
+        house = await self.query_executer(sql, id)
+    else:
+        sql = "SELECT * FROM houses.Houses WHERE id=(SELECT house FROM houses.Members WHERE id=$1 AND noble=$2)"
+        house = await self.query_executer(sql, id, noble)
+
+    if house:
+        return house[0]
+    else:
+        return None

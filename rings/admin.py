@@ -1,7 +1,7 @@
 import discord
 from discord.ext import commands
 
-from .utils.utils import HouseConverter, LandConverter
+from .utils.utils import HouseConverter, LandConverter, get_house_from_member
 
 import ast
 import psutil
@@ -70,10 +70,10 @@ class Admin(commands.Cog):
         `w!offer @Necro` - put Necro back in the House of the Raccoon, equivalent to having no house
         """
         if house is None:
-            house = (await self.bot.query_executer("SELECT * FROM Houses WHERE id=1"))[0]
+            house = (await self.bot.query_executer("SELECT * FROM houses.Houses WHERE id=1"))[0]
 
-        role = (await self.bot.query_executer("SELECT role FROM Houses WHERE id=(SELECT house FROM Members WHERE id=$1)", member.id))[0][0]
-        await self.bot.query_executer("UPDATE Members SET house=$1, noble='False' WHERE id=$2", house["id"], member.id)
+        role = await get_house_from_member(member.id)["role"]
+        await self.bot.query_executer("UPDATE houses.Members SET house=$1, noble='False' WHERE id=$2", house["id"], member.id)
         await ctx.send(f":white_check_mark: | By the king's command, **{member.display_name}** is now part of **{house['name']}**")
 
         role = discord.utils.get(ctx.guild.roles, id=role)
@@ -93,7 +93,7 @@ class Admin(commands.Cog):
         __Examples__
         `w!ennoble @Necro` - make Necro a noble of whichever house he currently is in 
         """
-        await self.bot.query_executer("UPDATE Members SET noble='True' WHERE id=$1", member.id)
+        await self.bot.query_executer("UPDATE houses.Members SET noble='True' WHERE id=$1", member.id)
         await ctx.send(f":white_check_mark: | By the king's command, **{member.display_name}** is now a noble of their house")
 
     @commands.command()
@@ -105,7 +105,7 @@ class Admin(commands.Cog):
         __Examples__
         `w!disennoble @Necro` - remove Necro as a noble of whichever house he currently is in 
         """
-        await self.bot.query_executer("UPDATE Members SET noble='False' WHERE id=$1", member.id)
+        await self.bot.query_executer("UPDATE houses.Members SET noble='False' WHERE id=$1", member.id)
         await ctx.send(f":white_check_mark: | By the king's command, **{member.display_name}** has been stripped of their nobility within their house")
 
     @commands.command()
@@ -138,14 +138,18 @@ class Admin(commands.Cog):
             else:
                 name = value
 
-            await self.bot.query_executer(f"UPDATE Houses SET {field}=$1 WHERE id=$2", value, house["id"])
+            name = await self.bot.query_executer(f"UPDATE houses.Houses SET {field}=$1 WHERE id=$2 RETURNING name", value, house["id"], fetchval=True)
             await ctx.send(f":white_check_mark: | The {field} of **{house['name']}** is now **{name}**")
 
             if field == 'role':
-                members = [discord.utils.get(ctx.guild.members, id=x[0]) for x in await self.bot.query_executer("SELECT id FROM Members WHERE house=$1", house["id"])]
+                members = [discord.utils.get(ctx.guild.members, id=x[0]) for x in await self.bot.query_executer("SELECT id FROM houses.Members WHERE house=$1", house["id"])]
                 for member in members:
                     await member.remove_roles(discord.utils.get(ctx.guild.roles, id=house["role"]))
                     await member.add_roles(discord.utils.get(ctx.guild.roles, id=value))
+
+            if field == 'name':
+                await self.bot.query_executer("UPDATE houses.Artefacts SET name=$1 WHERE name=$2", f'Banner of {name[0][0]}', f'Banner of {house["name"]}')
+
         else:
             await ctx.send(":negative_squared_cross_mark: | Not one of the given options")
 
