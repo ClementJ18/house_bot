@@ -4,7 +4,7 @@ import asyncio
 import enum
 
 def is_admin(ctx):
-    return ctx.message.author.id in ctx.bot.admin
+    return ctx.message.author.id in ctx.bot.admin    
 
 async def react_menu(ctx, max_pages, page_generator, page=0):
     msg = await ctx.send(embed=page_generator(page))
